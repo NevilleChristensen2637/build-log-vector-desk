@@ -69,6 +69,15 @@ async def create_collection(request: CollectionRequest) -> dict[str, str]:
     return {"collection": request.collection, "state": "ready"}
 
 
+@app.delete("/collections/{collection}")
+async def delete_collection(collection: str) -> dict[str, str]:
+    try:
+        await get_index().delete_collection(collection)
+    except InfraiError as error:
+        raise client_error(error) from error
+    return {"collection": collection, "state": "deleted"}
+
+
 @app.post("/build-events", response_model=IngestResult)
 async def ingest_build_event(request: BuildEventRequest) -> IngestResult:
     event = BuildEvent(
@@ -95,4 +104,3 @@ async def find_diagnostics(request: DiagnosticQuery) -> dict[str, object]:
     except InfraiError as error:
         raise client_error(error) from error
     return {"query": request.query, "matches": matches}
-

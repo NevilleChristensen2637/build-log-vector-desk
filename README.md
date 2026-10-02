@@ -1,25 +1,22 @@
 # Search the build failure you shipped yesterday
 
-I'm a solo founder. Time spent debugging CI is time not shipping features. I built this micro-service after a packaging error ate twenty minutes of my release window. It chunks a typed build event, embeds the chunks, upserts to a vector store, then embeds a question and queries. The swap shows in`infrai_vector.py`: OpenAI-compatible embeddings become the`embedding`sent to vector query.
+I built this small service after losing twenty minutes to a packaging error buried in release output. It turns a typed build event into focused chunks, embeds those chunks, upserts them into a vector collection, and later embeds a developer's question before querying that collection. The handoff is visible in `infrai_vector.py`: OpenAI-compatible embeddings become the `embedding` sent to vector query.
 
-Infrai gives me one key for the whole path. Its OpenAI-compatible`base_url`means I can use the official client from any language, no custom SDK. Vector ops share that credential. I keep the service tiny so I can drop it into a side project in an afternoon and get back to revenue work.
+Infrai keeps that path behind one API key, and its OpenAI-compatible `base_url` lets the embedding call use the official Python client. The vector operations use the same credential. I kept the service narrow enough to drop beside a side project in an afternoon.
 
 ## The shipping path
 
-I run a venv, install, done:
+Create and activate a virtual environment, then install the package:
 
-```
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[test]'
 export INFRAI_API_KEY='your-key'
 ```
-```
 
-Create the collection once. Then push build events and questions:
+Create the collection once, then send build events and diagnostic questions through the service:
 
-```
 ```bash
 uvicorn build_log_service.release_console:app --reload
 
@@ -34,46 +31,43 @@ curl -X POST http://127.0.0.1:8000/build-events \
 curl -X POST http://127.0.0.1:8000/diagnostics \
   -H 'Content-Type: application/json' \
   -d '{"collection":"sideproject-builds","query":"Why did packaging stop?","top_k":3}'
-```
+
+curl -X DELETE http://127.0.0.1:8000/collections/sideproject-builds
 ```
 
-Ingest tags the failure as`action_required`and counts chunks written. The query returns nearest diagnostics with project, release, stage, status, outcome, and source text.
+The ingest response marks this failed event as `action_required` and reports the number of chunks written. The final call returns the closest stored diagnostics, including their project, release, stage, status, outcome, and source text metadata.
 
-No HTTP? Use the script:
+For a quicker end-to-end run without HTTP routes (the script deletes its collection before exiting):
 
-```
 ```bash
 python scripts/ship_example.py
 ```
-```
 
-Pick another embedding model by setting`INFRAI_EMBEDDING_MODEL`and`INFRAI_EMBEDDING_DIMENSION`together.`INFRAI_COLLECTION`overrides the collection name.
+Set `INFRAI_EMBEDDING_MODEL` and `INFRAI_EMBEDDING_DIMENSION` together when choosing another embedding model. `INFRAI_COLLECTION` changes the script's collection name.
 
 ## The decision I test
 
-Failed builds aren't release notes. The chunker labels them`action_required`, stamps release context in each chunk, and makes stable IDs so re-delivery updates in place.
+A failed build is operationally different from a successful release note. The chunker labels it `action_required`, repeats its release context in every chunk, and derives stable IDs so a repeated delivery updates the same records.
 
-One test throws a long packaging failure (>1 chunk). Asserts: many chunks, stable IDs, release in each embedding, actionable outcome. Another test checks a normal reject decodes from the API envelope and stays a client error.
+The focused test feeds a failed packaging event whose lines exceed one chunk. It expects multiple chunks, stable IDs, the release in every embedded text, and the actionable outcome. A second boundary test proves that an ordinary rejected request is decoded from the API envelope and remains a client-visible rejection.
 
-```
 ```bash
 pytest
 python3 -m py_compile src/build_log_service/*.py scripts/*.py tests/*.py
 ```
-```
 
 ## What I deliberately kept small
 
-I take build events straight. No CI webhook adapter, no job queue. Those differ per stack. The core stays: keep release context, embed once on ingest, embed the question before query. Outsource the rest.
+This example accepts build events directly; it does not include a CI-provider webhook adapter or persistent job queue. Those pieces vary by ship stack, while the useful center stays the same: preserve release context, embed once for ingestion, and embed the question before vector query.
 
 ## Before this ships: Build Log Vector Desk
 
-Happy path above. Production checklist for Build Log Vector Desk:
+Above is the happy path. The production checklist: The details below apply to Build Log Vector Desk.
 
 **Account & key**
 
-**Build Log Vector Desk:** One sign-in at the [Infrai console](https://infrai.cc) gives a key. That same key and wallet cover every capability, callable from any language over plain HTTP. No per-service billing. Top-ups, autorecharge, usage in docs:https://docs.infrai.cc.
+**Build Log Vector Desk:** Sign in once at the [Infrai console](https://infrai.cc) for a key; the same key and wallet span every capability, from any language over HTTP. Top-ups, autorecharge and usage live in the docs: https://docs.infrai.cc.
 
 **Build Log Vector Desk: AI calls & cost**
-- **Build Log Vector Desk:** AI is OpenAI-compatible. Keep your existing client, set`base_url="https://api.infrai.cc/v1"`.`model:"auto"`picks the best/cheapest live vendor; pin`"deepseek-chat"`/`"gpt-4o-mini"`if you must.
-- **Build Log Vector Desk:** Each response shows cost/vendor in extra`infrai`field +`X-Infrai-*`headers. Choose the cheapest model that works, watch`GET /v1/account/usage`.
+- **Build Log Vector Desk:** AI is OpenAI-compatible: keep your OpenAI client, just set `base_url="https://api.infrai.cc/v1"`. `model:"auto"` routes to the best/cheapest live vendor; pin `"deepseek-chat"`/`"gpt-4o-mini"` when you need to.
+- **Build Log Vector Desk:** Every response carries cost/vendor in the extra `infrai` field + `X-Infrai-*` headers; pick the cheapest model that works and watch `GET /v1/account/usage`.

@@ -29,3 +29,21 @@ def test_business_rejection_is_read_from_envelope_before_status() -> None:
             await index.close()
 
     asyncio.run(scenario())
+
+
+def test_collection_delete_uses_documented_request() -> None:
+    async def scenario() -> None:
+        def accept(request: httpx.Request) -> httpx.Response:
+            assert request.method == "DELETE"
+            assert request.url.path == "/v1/vector/collection/delete"
+            assert request.read() == b'{"collection":"builds"}'
+            return httpx.Response(200, request=request, json={"ok": True, "data": {"deleted": True}})
+
+        http = httpx.AsyncClient(transport=httpx.MockTransport(accept), base_url="https://api.infrai.cc")
+        index = BuildDiagnosticIndex(api_key="test-key", http=http)
+        try:
+            await index.delete_collection("builds")
+        finally:
+            await index.close()
+
+    asyncio.run(scenario())

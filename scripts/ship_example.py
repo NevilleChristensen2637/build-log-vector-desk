@@ -10,8 +10,10 @@ async def main() -> None:
     model = os.environ.get("INFRAI_EMBEDDING_MODEL", "text-embedding-3-small")
     dimension = int(os.environ.get("INFRAI_EMBEDDING_DIMENSION", "1536"))
     index = BuildDiagnosticIndex()
+    created = False
     try:
         await index.create_collection(collection, dimension)
+        created = True
         event = BuildEvent(
             project="checkout-api",
             release="2026.09.04",
@@ -23,9 +25,12 @@ async def main() -> None:
         matches = await index.search(collection, "Why did packaging stop?", model, top_k=3)
         print({"chunks_upserted": count, "diagnostics": matches})
     finally:
-        await index.close()
+        try:
+            if created:
+                await index.delete_collection(collection)
+        finally:
+            await index.close()
 
 
 if __name__ == "__main__":
     asyncio.run(main())
-

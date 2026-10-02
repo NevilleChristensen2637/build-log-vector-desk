@@ -37,13 +37,15 @@ class BuildDiagnosticIndex:
         await self.embeddings.close()
         await self.http.aclose()
 
-    async def _post(self, path: str, payload: dict[str, Any], idempotency_key: str | None = None) -> Any:
+    async def _request(
+        self, method: str, path: str, payload: dict[str, Any], idempotency_key: str | None = None
+    ) -> Any:
         headers = {"Authorization": f"Bearer {self.api_key}"}
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
 
         for attempt in range(4):
-            response = await self.http.request(method="POST", url=path, json=payload, headers=headers)
+            response = await self.http.request(method=method, url=path, json=payload, headers=headers)
             try:
                 envelope = response.json()
             except ValueError:
@@ -63,11 +65,21 @@ class BuildDiagnosticIndex:
             return envelope.get("data")
         raise RuntimeError("Retry budget exhausted")
 
+    async def _post(self, path: str, payload: dict[str, Any], idempotency_key: str | None = None) -> Any:
+        return await self._request("POST", path, payload, idempotency_key)
+
     async def create_collection(self, collection: str, dimension: int) -> Any:
         return await self._post(
             "/v1/vector/collection/create",
             {"collection": collection, "dimension": dimension, "metric": "cosine", "metadata": {"kind": "build_diagnostics"}},
             idempotency_key=f"collection:{collection}:{dimension}",
+        )
+
+    async def delete_collection(self, collection: str) -> Any:
+        return await self._request(
+            "DELETE",
+            "/v1/vector/collection/delete",
+            {"collection": collection},
         )
 
     async def _embed(self, texts: list[str], model: str) -> list[list[float]]:
